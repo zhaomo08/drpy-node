@@ -937,7 +937,8 @@ export default (fastify, options, done) => {
         const query = request.query; // 获取 query 参数
         const pwd = query.pwd || '';
         const sub_code = query.sub || '';
-        const healthy = query.healthy || ''; // 新增healthy参数
+        // 默认过滤失效源(healthy=1)，显式传 healthy=0 才返回全部(源检测器就是这么调的)
+        const healthy = query.healthy !== undefined ? query.healthy : '1';
         const cat_sub_code = ENV.get('cat_sub_code', 'all');
         const must_sub_code = Number(ENV.get('must_sub_code', '0')) || 0;
         const cfg_path = request.params['*']; // 捕获整个路径
