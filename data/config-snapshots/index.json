@@ -1,0 +1,42 @@
+{
+  "builtAt": "2026-07-31T15:41:53.279Z",
+  "files": [
+    {
+      "sub": "fast",
+      "file": "fast.json",
+      "sites_count": 25,
+      "healthy": "2"
+    },
+    {
+      "sub": "stable",
+      "file": "stable.json",
+      "sites_count": 53,
+      "healthy": "2"
+    },
+    {
+      "sub": "stablex",
+      "file": "stablex.json",
+      "sites_count": 86,
+      "healthy": "2"
+    },
+    {
+      "sub": "green",
+      "file": "green.json",
+      "sites_count": 162,
+      "healthy": "1"
+    },
+    {
+      "sub": "all",
+      "file": "all.json",
+      "sites_count": 164,
+      "healthy": "1"
+    },
+    {
+      "sub": "tv",
+      "file": "tv.json",
+      "sites_count": 142,
+      "healthy": "1"
+    }
+  ],
+  "reportExportTime": "2026-03-14T05:07:55.462Z"
+}

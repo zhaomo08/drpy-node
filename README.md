@@ -25,6 +25,12 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 
 ### 稳定源优化（本 fork）
 
+**本批三项落地**
+1. 猫默认订阅改为 `stablex`（可用环境变量 `CAT_SUB_CODE` 覆盖）
+2. 配置预构建快照：`npm run build:snapshots` → `data/config-snapshots/`，`/config` 优先走快照
+3. GitHub Action 每周刷新采集站 + 重建快照：`.github/workflows/weekly-source-refresh.yml`
+
+
 目标：公网/Vercel 场景下源更多、更稳、更快。
 
 1. `healthy=1` 默认过滤失效源；`healthy=2` 严格模式（`stable/stablex/fast` 自动升到 2）

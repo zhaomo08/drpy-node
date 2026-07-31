@@ -1,0 +1,52 @@
+name: weekly-source-refresh
+
+on:
+  schedule:
+    # 每周一 03:17 UTC ≈ 北京时间 11:17
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Refresh caiji endpoints
+        run: bash scripts/refresh_stable_caiji.sh
+
+      - name: Build config snapshots
+        run: node scripts/build-config-snapshots.mjs
+
+      - name: Detect changes
+        id: diff
+        run: |
+          if git diff --quiet -- json public/sub config data/config-snapshots scripts; then
+            # also track untracked snapshots
+            if [ -z "$(git ls-files --others --exclude-standard data/config-snapshots)" ]; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          git status -sb
+
+      - name: Commit and push
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add json/采集静态.json json/采集2025静态.json json/采集2026静态.json json/采集fast静态.json \
+            data/config-snapshots || true
+          git add -A json data/config-snapshots || true
+          git commit -m "chore: weekly refresh caiji sources and config snapshots" || exit 0
+          git push

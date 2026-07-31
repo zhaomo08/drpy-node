@@ -37,6 +37,69 @@ function getConfigCacheTtlMs() {
     return fromEnv;
 }
 
+/**
+ * 猫配置默认订阅：stablex（可用 CAT_SUB_CODE / cat_sub_code 覆盖）
+ */
+function getCatSubCode() {
+    if (process.env.CAT_SUB_CODE) return String(process.env.CAT_SUB_CODE);
+    if (process.env.cat_sub_code) return String(process.env.cat_sub_code);
+    return String(ENV.get('cat_sub_code', 'stablex') || 'stablex');
+}
+
+function isConfigSnapshotEnabled() {
+    const flag = process.env.USE_CONFIG_SNAPSHOT ?? ENV.get('use_config_snapshot', '1');
+    return String(flag) !== '0' && String(flag).toLowerCase() !== 'false';
+}
+
+/**
+ * 读取预构建快照并替换主机/密码占位符
+ */
+function tryLoadConfigSnapshot(rootDir, subCode, requestHost, pwd) {
+    if (!isConfigSnapshotEnabled() || !subCode) return null;
+    const snapPath = path.join(rootDir, 'data', 'config-snapshots', `${subCode}.json`);
+    if (!existsSync(snapPath)) return null;
+    try {
+        const raw = readFileSync(snapPath, 'utf-8');
+        let text = raw
+            .replaceAll('__HOST__', requestHost)
+            .replaceAll('__HOSTNAME__', requestHost.replace(/^https?:\/\//, ''));
+        const obj = JSON.parse(text);
+        if (!obj || !Array.isArray(obj.sites)) return null;
+
+        const pwdQ = pwd ? `pwd=${encodeURIComponent(pwd)}` : '';
+        const attachPwd = (url) => {
+            if (!pwdQ || !url || typeof url !== 'string') return url;
+            // 仅给后端 /api/ 与 /js/ 鉴权，避免污染静态 drpy2 脚本 URL
+            if (!/\/(api|js)\//.test(url)) return url;
+            if (url.includes('pwd=')) return url;
+            return url.includes('?') ? `${url}&${pwdQ}` : `${url}?${pwdQ}`;
+        };
+
+        obj.sites = obj.sites.map((site) => {
+            const next = {...site};
+            if (next.api) next.api = attachPwd(next.api);
+            if (next.ext && typeof next.ext === 'string' && next.ext.startsWith('http')) {
+                next.ext = attachPwd(next.ext);
+            }
+            return next;
+        });
+        if (Array.isArray(obj.parses)) {
+            obj.parses = obj.parses.map((p) => ({
+                ...p,
+                url: typeof p.url === 'string'
+                    ? p.url.replaceAll('__HOSTNAME__', requestHost.replace(/^https?:\/\//, ''))
+                    : p.url,
+            }));
+        }
+        obj.sites_count = obj.sites.length;
+        obj.from_snapshot = true;
+        return obj;
+    } catch (e) {
+        console.warn('[snapshot] load failed:', e.message);
+        return null;
+    }
+}
+
 function buildConfigCacheKey({requestHost, cfgPath, subCode, healthy, pwd}) {
     // pwd 只参与是否存在/哈希，避免明文进入 key 日志
     const pwdFlag = pwd ? md5(String(pwd)).slice(0, 8) : '0';
@@ -1068,7 +1131,7 @@ export default (fastify, options, done) => {
         const sub_code = query.sub || '';
         // 默认过滤失效源(healthy=1)，显式传 healthy=0 才返回全部(源检测器就是这么调的)
         const healthy = query.healthy !== undefined ? query.healthy : '1';
-        const cat_sub_code = ENV.get('cat_sub_code', 'all');
+        const cat_sub_code = getCatSubCode();
         const must_sub_code = Number(ENV.get('must_sub_code', '0')) || 0;
         const cfg_path = request.params['*']; // 捕获整个路径
         try {
@@ -1198,6 +1261,32 @@ export default (fastify, options, done) => {
                 reply.header('x-config-cache', 'HIT');
                 reply.header('Cache-Control', `public, max-age=${Math.max(30, Math.floor(cacheTtlMs / 1000))}`);
                 return reply.send(Object.assign({}, cached, {cost, cache: 'HIT'}));
+            }
+
+            // 预构建快照：对常见订阅直接返回，跳过全量扫源
+            const snapSub = sub_code || 'all';
+            const forceLive = String(query.live || query.nosnap || '') === '1';
+            if (!forceLive) {
+                const snap = tryLoadConfigSnapshot(options.rootDir, snapSub, requestHost, pwd);
+                if (snap) {
+                    // 快照已按订阅/健康策略生成；若用户显式 healthy=0 则不走快照
+                    if (healthy !== '0') {
+                        const livesJSON = generateLivesJSON(requestHost);
+                        const playerJSON = generatePlayerJSON(options.configDir, requestHost);
+                        const configObj = {
+                            ...playerJSON,
+                            ...snap,
+                            ...livesJSON,
+                            sites_count: (snap.sites || []).length,
+                        };
+                        if (!configObj.spider) configObj.spider = playerJSON.spider;
+                        const cost = (new Date()).getTime() - t1;
+                        setCachedConfig(cacheKey, configObj, cacheTtlMs);
+                        reply.header('x-config-cache', 'SNAPSHOT');
+                        reply.header('Cache-Control', `public, max-age=${Math.max(30, Math.floor(cacheTtlMs / 1000))}`);
+                        return reply.send(Object.assign({cost, cache: 'SNAPSHOT'}, configObj));
+                    }
+                }
             }
 
             // 生成站点配置数据

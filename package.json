@@ -29,7 +29,10 @@
     "test-bun:bundle": "cd drpy-node-bundle && bun localDsCoreTest.js",
     "admin:dev": "cd drpy-node-admin && npm run dev",
     "admin:build": "cd drpy-node-admin && npm run build:apps",
-    "admin:install": "cd drpy-node-admin && npm install"
+    "admin:install": "cd drpy-node-admin && npm install",
+    "build:snapshots": "node scripts/build-config-snapshots.mjs",
+    "refresh:sources": "bash scripts/refresh_stable_caiji.sh && node scripts/build-config-snapshots.mjs",
+    "vercel-build": "node scripts/build-config-snapshots.mjs"
   },
   "engines": {
     "node": ">17 <24"

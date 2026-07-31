@@ -71,7 +71,7 @@ const FULL_ENV_TEMPLATE = {
     "enable_link_data": "0",
     "enable_link_push": "0",
     "enable_link_jar": "0",
-    "cat_sub_code": "all",
+    "cat_sub_code": "stablex",
     "must_sub_code": "0",
     "bili_cookie": "",
     "mg_hz": "4"
