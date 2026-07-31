@@ -38,13 +38,13 @@ function getConfigCacheTtlMs() {
 }
 
 /**
- * 猫配置默认订阅：green（全量去密+可健康过滤）
- * 可用环境变量 CAT_SUB_CODE / cat_sub_code 覆盖为 stablex/fast/all 等
+ * 猫配置默认订阅：all（与 9de45b9 一致，全量源；可用 CAT_SUB_CODE 覆盖）
+ * 可用环境变量 CAT_SUB_CODE / cat_sub_code 覆盖为 green/stablex/fast 等
  */
 function getCatSubCode() {
     if (process.env.CAT_SUB_CODE) return String(process.env.CAT_SUB_CODE);
     if (process.env.cat_sub_code) return String(process.env.cat_sub_code);
-    return String(ENV.get('cat_sub_code', 'green') || 'green');
+    return String(ENV.get('cat_sub_code', 'all') || 'all');
 }
 
 /**
@@ -58,7 +58,7 @@ function getConfigPwd(requestPwd = '') {
 }
 
 function isConfigSnapshotEnabled() {
-    const flag = process.env.USE_CONFIG_SNAPSHOT ?? ENV.get('use_config_snapshot', '1');
+    const flag = process.env.USE_CONFIG_SNAPSHOT ?? ENV.get('use_config_snapshot', '0');
     return String(flag) !== '0' && String(flag).toLowerCase() !== 'false';
 }
 

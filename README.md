@@ -27,8 +27,8 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 
 目标：公网/Vercel 场景下源更多、更稳、更快。
 
-1. **猫默认订阅 `green`**（约 160+ 源，去密 + healthy 过滤）。可用环境变量 `CAT_SUB_CODE` 覆盖为 `all` / `stablex` / `fast`
-2. 配置预构建快照：`npm run build:snapshots` → `data/config-snapshots/`，`/config` 优先走快照
+1. **猫默认订阅 `all`**（与可用版 9de45b9 一致，全量源 + healthy 过滤）。可用 `CAT_SUB_CODE=green/stablex/fast` 收窄
+2. 配置快照默认**关闭**（走实时生成，避免客户端源列表异常）；需要时设 `USE_CONFIG_SNAPSHOT=1`
 3. GitHub Action 每周刷新采集站 + 重建快照：`.github/workflows/weekly-source-refresh.yml`
 4. 猫 `index.config` 会自动注入 `API_PWD`，避免设密后拉源列表 403、源「消失」
 5. `healthy=1` 默认过滤失效源；`healthy=2` 严格模式（`stable/stablex/fast` 自动升到 2）
