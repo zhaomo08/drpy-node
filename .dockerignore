@@ -1,0 +1,29 @@
+.git
+.github
+.idea
+.vscode
+.DS_Store
+*.md
+!README.md
+
+node_modules
+npm-debug.log*
+yarn-error.log*
+
+drpy-node-admin
+drpy-node-bundle
+drpy-node-mcp
+drpy2-quickjs
+
+# 本地/测试产物
+coverage
+.tmp
+tmp
+logs
+*.log
+
+# 不必打进镜像的大文件/备份
+**/*.zip
+**/*.tar
+**/*.tar.gz
+**/node_modules
