@@ -46,6 +46,96 @@ function parseExt(str) {
 }
 
 /**
+ * Vercel/Serverless 环境下默认关闭依赖长驻进程的源类型，提升可用稳定性
+ * 可用环境变量显式覆盖：enable_py / enable_php / enable_cat / enable_dr2
+ */
+function getRuntimeEnableFlag(key, fallback = '1') {
+    // 优先显式 process.env（适配 Vercel 环境变量），再读 env.json
+    if (process.env[key] !== undefined && process.env[key] !== '') {
+        return String(process.env[key]);
+    }
+    const upper = String(key || '').toUpperCase();
+    if (upper && process.env[upper] !== undefined && process.env[upper] !== '') {
+        return String(process.env[upper]);
+    }
+    const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.FUNCTIONS_WORKER_RUNTIME);
+    const serverlessDefaults = {
+        enable_py: '0',
+        enable_php: '0',
+        // cat 源在无守护进程时也容易超时，默认保留 JS/DS
+        enable_cat: '0',
+    };
+    const defaultValue = isServerless && Object.prototype.hasOwnProperty.call(serverlessDefaults, key)
+        ? serverlessDefaults[key]
+        : fallback;
+    return ENV.get(key, defaultValue);
+}
+
+/**
+ * 按健康报告过滤站点
+ * healthy:
+ *  - 0: 不过滤
+ *  - 1: 过滤 status=error（手动标记 success 保留，手动标记 error 剔除）
+ *  - 2: 在 1 基础上再剔除弱稳定标签（密/差/擦等）
+ * 报告超过 maxAgeDays 仍会过滤，但会打日志提示需要复检
+ */
+function applyHealthyFilter(sites, healthy, rootDir, maxAgeDays = 30) {
+    const mode = String(healthy || '0');
+    if (mode === '0' || mode === 'false') {
+        return sites;
+    }
+
+    const reportPath = path.join(rootDir, 'data', 'source-checker', 'report.json');
+    if (!existsSync(reportPath)) {
+        console.log('[healthy] report.json 不存在，跳过健康过滤');
+        return sites;
+    }
+
+    try {
+        const reportData = JSON.parse(readFileSync(reportPath, 'utf-8'));
+        if (reportData.exportTime) {
+            const ageMs = Date.now() - new Date(reportData.exportTime).getTime();
+            const ageDays = ageMs / (1000 * 60 * 60 * 24);
+            if (Number.isFinite(ageDays) && ageDays > maxAgeDays) {
+                console.warn(`[healthy] 健康报告已 ${ageDays.toFixed(1)} 天未更新，建议复检 apps/source-checker`);
+            }
+        }
+
+        const failedKeys = new Set();
+        const forcedKeepKeys = new Set();
+        if (Array.isArray(reportData.sources)) {
+            for (const source of reportData.sources) {
+                if (!source || !source.key) continue;
+                if (source.manuallyMarked && source.status === 'success') {
+                    forcedKeepKeys.add(source.key);
+                    continue;
+                }
+                if (source.manuallyMarked && source.status === 'error') {
+                    failedKeys.add(source.key);
+                    continue;
+                }
+                if (source.status === 'error') {
+                    failedKeys.add(source.key);
+                }
+            }
+        }
+
+        let filtered = sites.filter((site) => forcedKeepKeys.has(site.key) || !failedKeys.has(site.key));
+
+        if (mode === '2' || mode === 'strict') {
+            const weakReg = /\[密\]|密\+|\[差\]|\[擦\]|js_bad|原始/;
+            filtered = filtered.filter((site) => !weakReg.test(site.name || ''));
+        }
+
+        console.log(`[healthy] mode=${mode}, removed=${sites.length - filtered.length}, remaining=${filtered.length}`);
+        return filtered;
+    } catch (error) {
+        console.error('[healthy] 处理健康报告失败:', error.message);
+        return sites;
+    }
+}
+
+/**
  * 格式化扩展参数用于日志输出
  * 将对象或数组转换为JSON字符串，其他类型直接返回
  * @param {any} _ext - 扩展参数
@@ -282,7 +372,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
     await batchExecute(tasks, listener);
 
     // 根据用户是否启用dr2源去生成对应配置
-    const enable_dr2 = ENV.get('enable_dr2', '1');
+    const enable_dr2 = getRuntimeEnableFlag('enable_dr2', '1');
     if ((enable_dr2 === '1' || enable_dr2 === '2')) {
         const dr2_files = readdirSync(dr2Dir);
         let dr2_valid_files = dr2_files.filter((file) => file.endsWith('.js') && !file.startsWith('_')); // 筛选出不是 "_" 开头的 .js 文件
@@ -419,8 +509,8 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
 
     }
 
-    // 根据用户是否启用py源去生成对应配置
-    const enable_py = ENV.get('enable_py', '1');
+    // 根据用户是否启用py源去生成对应配置（Vercel 默认关闭）
+    const enable_py = getRuntimeEnableFlag('enable_py', '1');
     if (enable_py === '1' || enable_py === '2') {
         const py_files = readdirSync(pyDir);
         const api_type = enable_py === '1' ? 3 : 4;
@@ -522,8 +612,8 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
 
     }
 
-    // 根据用户是否启用php源去生成对应配置
-    const enable_php = ENV.get('enable_php', '1');
+    // 根据用户是否启用php源去生成对应配置（Vercel 默认关闭）
+    const enable_php = getRuntimeEnableFlag('enable_php', '1');
     console.log('isPhpAvailable:', isPhpAvailable);
     if ((enable_php === '1' && isPhpAvailable) || enable_php === '2') {
         const php_files = readdirSync(phpDir);
@@ -579,7 +669,7 @@ async function generateSiteJSON(options, requestHost, sub, pwd) {
         await batchExecute(php_tasks, listener);
     }
 
-    const enable_cat = ENV.get('enable_cat', '1');
+    const enable_cat = getRuntimeEnableFlag('enable_cat', '1');
     // 根据用户是否启用cat源去生成对应配置
     if (enable_cat === '1' || enable_cat === '2') {
         const cat_files = readdirSync(catDir);
@@ -1051,34 +1141,19 @@ export default (fastify, options, done) => {
             // 生成站点配置数据
             let siteJSON = await generateSiteJSON(options, requestHost, sub, pwd);
 
-            // 处理healthy参数，过滤失效源
-            if (healthy === '1') {
-                const reportPath = path.join(options.rootDir, 'data', 'source-checker', 'report.json');
-                if (existsSync(reportPath)) {
-                    try {
-                        const reportContent = readFileSync(reportPath, 'utf-8');
-                        const reportData = JSON.parse(reportContent);
-
-                        // 获取失效源的key列表
-                        const failedKeys = new Set();
-                        if (reportData.sources && Array.isArray(reportData.sources)) {
-                            reportData.sources.forEach(source => {
-                                if (source.status === 'error') {
-                                    failedKeys.add(source.key);
-                                }
-                            });
-                        }
-
-                        // 过滤掉失效的源
-                        if (failedKeys.size > 0) {
-                            siteJSON.sites = siteJSON.sites.filter(site => !failedKeys.has(site.key));
-                            console.log(`Filtered out ${failedKeys.size} failed sources, remaining: ${siteJSON.sites.length}`);
-                        }
-                    } catch (error) {
-                        console.error('Failed to process health report:', error.message);
-                    }
-                }
+            // 处理healthy参数，过滤失效源（默认1；2=严格模式）
+            // 稳定订阅在未显式关闭 healthy 时，自动升到严格模式
+            let healthyMode = healthy;
+            if ((sub_code === 'stable' || sub_code === 'stablex') && healthy !== '0') {
+                healthyMode = (healthy === '1' || !healthy) ? '2' : healthy;
             }
+            siteJSON.sites = applyHealthyFilter(
+                siteJSON.sites,
+                healthyMode,
+                options.rootDir,
+                Number(ENV.get('health_report_max_age_days', '30')) || 30
+            );
+            siteJSON.sites_count = siteJSON.sites.length;
 
             // 生成各类配置数据
             const parseJSON = await generateParseJSON(options.jxDir, requestHost);

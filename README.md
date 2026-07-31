@@ -20,7 +20,20 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 * [本地配置接口-动态本地](/config?healthy=1&pwd=$pwd)
 * [本地配置接口-动态外网/局域网](/config/1?healthy=1&pwd=$pwd)
 * [其他配置接口-订阅过滤](/docs/sub.md)
+* [稳定精选订阅](/config/1?sub=stable&healthy=1) | [稳定增强](/config/1?sub=stablex&healthy=1) | [绿色订阅](/config/1?sub=green&healthy=1)
 * [python环境](/docs/pyenv.md) | [DS项目环境变量说明](/docs/envdoc.md)
+
+### 稳定源优化（本 fork）
+
+目标：公网/Vercel 场景下源更多、更稳、少失效。
+
+1. `healthy=1` 默认过滤失效源；`healthy=2` 严格模式（`sub=stable/stablex` 自动升到 2）
+2. 新增订阅：`stable`（精选）、`stablex`（增强）
+3. 已重写可用的 `json/采集静态.json`、`采集2025/2026静态.json`（采王聚合更全）
+4. 定期刷新采集站：`bash scripts/refresh_stable_caiji.sh`
+5. Vercel 默认关闭 `py/php/cat`（可用环境变量强制开启）
+6. 推荐地址：`/config/1?sub=stable&pwd=你的密码` 或 `sub=stablex`
+7. 建议定期用 `/apps/source-checker` 复检并保存 `report.json`
 * php环境(详见 spider/php/readme.md) 不在这里赘述
 * [猫源调试教程](/docs/catDebug.md)
 * [接口压测教程](/docs/httpTest.md)
