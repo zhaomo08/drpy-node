@@ -104,6 +104,7 @@ function tryLoadConfigSnapshot(rootDir, subCode, requestHost, pwd) {
         }
         obj.sites_count = obj.sites.length;
         obj.from_snapshot = true;
+        obj.homepage = 'https://github.com/hjdhnx/drpy-node';
         return obj;
     } catch (e) {
         console.warn('[snapshot] load failed:', e.message);
@@ -1318,6 +1319,21 @@ export default (fastify, options, done) => {
             const playerJSON = generatePlayerJSON(options.configDir, requestHost);
             // 合并所有配置数据
             const configObj = {sites_count: siteJSON.sites.length, ...playerJSON, ...siteJSON, ...parseJSON, ...livesJSON};
+            // 猫端依赖 homepage 前缀校验；保持与官方猫包兼容
+            configObj.homepage = 'https://github.com/hjdhnx/drpy-node';
+            // 输出精简 sites，去掉 more/logo 等大字段，避免猫端解析/内存问题
+            configObj.sites = (configObj.sites || []).map((s) => ({
+                key: s.key,
+                name: s.name,
+                type: Number(s.type) || s.type,
+                api: s.api,
+                searchable: s.searchable ?? 1,
+                filterable: s.filterable ?? 1,
+                quickSearch: s.quickSearch ?? 0,
+                ext: s.ext ?? '',
+                lang: s.lang,
+            }));
+
             if (!configObj.spider) {
                 configObj.spider = playerJSON.spider
             }
