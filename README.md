@@ -25,25 +25,17 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 
 ### 稳定源优化（本 fork）
 
-**本批三项落地**
-1. 猫默认订阅改为 `stablex`（可用环境变量 `CAT_SUB_CODE` 覆盖）
-2. 配置预构建快照：`npm run build:snapshots` → `data/config-snapshots/`，`/config` 优先走快照
-3. GitHub Action 每周刷新采集站 + 重建快照：`.github/workflows/weekly-source-refresh.yml`
-
-
 目标：公网/Vercel 场景下源更多、更稳、更快。
 
-1. `healthy=1` 默认过滤失效源；`healthy=2` 严格模式（`stable/stablex/fast` 自动升到 2）
-2. 订阅：`stable` 精选 / `stablex` 增强 / `fast` 极速精简
-3. 采王：`采集静态` + `2025/2026` + **`采集fast静态`（低延迟站）** → 别名「采王极速」
-4. `/config` 内存缓存（默认 120s，`CONFIG_CACHE_TTL_MS` 可调），重复拉取更快
-5. Vercel 下 API 默认超时 12s（更快失败切换）；可用 `API_TIMEOUT` 覆盖
-6. Vercel 默认关闭 `py/php/cat`；定期：`bash scripts/refresh_stable_caiji.sh`
-7. 推荐：
-   - 猫继续用 `/config/index.js.md5`
-   - 要稳：`cat_sub_code=stablex`
-   - 要快：`cat_sub_code=fast` 或 `/config/1?sub=fast`
-8. 建议定期 `/apps/source-checker` 复检并保存 `report.json`
+1. **猫默认订阅 `green`**（约 160+ 源，去密 + healthy 过滤）。可用环境变量 `CAT_SUB_CODE` 覆盖为 `all` / `stablex` / `fast`
+2. 配置预构建快照：`npm run build:snapshots` → `data/config-snapshots/`，`/config` 优先走快照
+3. GitHub Action 每周刷新采集站 + 重建快照：`.github/workflows/weekly-source-refresh.yml`
+4. 猫 `index.config` 会自动注入 `API_PWD`，避免设密后拉源列表 403、源「消失」
+5. `healthy=1` 默认过滤失效源；`healthy=2` 严格模式（`stable/stablex/fast` 自动升到 2）
+6. 订阅：`green` 全量去密 / `stable` 精选 / `stablex` 增强 / `fast` 极速精简
+7. 采王：`采集静态` + `2025/2026` + **`采集fast静态`** → 别名「采王极速」（节点内含多家采集，含非凡资源，不是把全站改成非凡）
+8. `/config` 内存缓存（默认 120s）；Vercel API 超时默认 12s；默认关 `py/php/cat`
+9. 推荐：猫继续用 `/config/index.js.md5`；改订阅后请在客户端 **删源重加 / 清缓存** 再拉 md5
 
 * php环境(详见 spider/php/readme.md) 不在这里赘述
 * [猫源调试教程](/docs/catDebug.md)

@@ -38,12 +38,23 @@ function getConfigCacheTtlMs() {
 }
 
 /**
- * 猫配置默认订阅：stablex（可用 CAT_SUB_CODE / cat_sub_code 覆盖）
+ * 猫配置默认订阅：green（全量去密+可健康过滤）
+ * 可用环境变量 CAT_SUB_CODE / cat_sub_code 覆盖为 stablex/fast/all 等
  */
 function getCatSubCode() {
     if (process.env.CAT_SUB_CODE) return String(process.env.CAT_SUB_CODE);
     if (process.env.cat_sub_code) return String(process.env.cat_sub_code);
-    return String(ENV.get('cat_sub_code', 'stablex') || 'stablex');
+    return String(ENV.get('cat_sub_code', 'green') || 'green');
+}
+
+/**
+ * 生成猫 config_url 时使用的 pwd：
+ * 请求参数优先，否则回落 process.env.API_PWD（Vercel 已配置密码时必须注入，否则猫拉 /config/1 会 403）
+ */
+function getConfigPwd(requestPwd = '') {
+    if (requestPwd) return String(requestPwd);
+    if (process.env.API_PWD) return String(process.env.API_PWD);
+    return '';
 }
 
 function isConfigSnapshotEnabled() {
@@ -1127,7 +1138,7 @@ export default (fastify, options, done) => {
     fastify.get('/config*', {preHandler: [validatePwd, validateBasicAuth]}, async (request, reply) => {
         let t1 = (new Date()).getTime();
         const query = request.query; // 获取 query 参数
-        const pwd = query.pwd || '';
+        const pwd = getConfigPwd(query.pwd || '');
         const sub_code = query.sub || '';
         // 默认过滤失效源(healthy=1)，显式传 healthy=0 才返回全部(源检测器就是这么调的)
         const healthy = query.healthy !== undefined ? query.healthy : '1';
@@ -1179,9 +1190,11 @@ export default (fastify, options, done) => {
             // }
             const getFilePath = (cfgPath, rootDir, fileName) => path.join(rootDir, `data/cat/${fileName}`);
             const processContent = (content, cfgPath, requestUrl, requestHost) => {
-                const $config_url = requestUrl.replace(cfgPath, `/1?sub=${cat_sub_code}&healthy=1&pwd=${process.env.API_PWD || ''}`);
-                return content.replaceAll('$config_url', $config_url).replaceAll('$host', requestHost);
-            }
+                            const cfgPwd = encodeURIComponent(pwd || '');
+                            const pathQ = '/1?sub=' + cat_sub_code + '&healthy=1&pwd=' + cfgPwd;
+                            const $config_url = requestUrl.replace(cfgPath, pathQ);
+                            return content.replaceAll('$config_url', $config_url).replaceAll('$host', requestHost);
+                        }
 
 
             const handleJavaScript = (cfgPath, requestUrl, requestHost, options, reply) => {
