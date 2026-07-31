@@ -25,15 +25,20 @@ nodejs作为服务端的drpy实现。全面升级异步写法
 
 ### 稳定源优化（本 fork）
 
-目标：公网/Vercel 场景下源更多、更稳、少失效。
+目标：公网/Vercel 场景下源更多、更稳、更快。
 
-1. `healthy=1` 默认过滤失效源；`healthy=2` 严格模式（`sub=stable/stablex` 自动升到 2）
-2. 新增订阅：`stable`（精选）、`stablex`（增强）
-3. 已重写可用的 `json/采集静态.json`、`采集2025/2026静态.json`（采王聚合更全）
-4. 定期刷新采集站：`bash scripts/refresh_stable_caiji.sh`
-5. Vercel 默认关闭 `py/php/cat`（可用环境变量强制开启）
-6. 推荐地址：`/config/1?sub=stable&pwd=你的密码` 或 `sub=stablex`
-7. 建议定期用 `/apps/source-checker` 复检并保存 `report.json`
+1. `healthy=1` 默认过滤失效源；`healthy=2` 严格模式（`stable/stablex/fast` 自动升到 2）
+2. 订阅：`stable` 精选 / `stablex` 增强 / `fast` 极速精简
+3. 采王：`采集静态` + `2025/2026` + **`采集fast静态`（低延迟站）** → 别名「采王极速」
+4. `/config` 内存缓存（默认 120s，`CONFIG_CACHE_TTL_MS` 可调），重复拉取更快
+5. Vercel 下 API 默认超时 12s（更快失败切换）；可用 `API_TIMEOUT` 覆盖
+6. Vercel 默认关闭 `py/php/cat`；定期：`bash scripts/refresh_stable_caiji.sh`
+7. 推荐：
+   - 猫继续用 `/config/index.js.md5`
+   - 要稳：`cat_sub_code=stablex`
+   - 要快：`cat_sub_code=fast` 或 `/config/1?sub=fast`
+8. 建议定期 `/apps/source-checker` 复检并保存 `report.json`
+
 * php环境(详见 spider/php/readme.md) 不在这里赘述
 * [猫源调试教程](/docs/catDebug.md)
 * [接口压测教程](/docs/httpTest.md)

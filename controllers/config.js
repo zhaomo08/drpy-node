@@ -27,6 +27,45 @@ import {isPhpAvailable} from '../utils/phpEnv.js';
 
 const {jsEncoder} = drpyS;
 
+// /config 内存缓存：降低 Vercel 重复生成配置的冷延迟
+const configResponseCache = new Map();
+const DEFAULT_CONFIG_CACHE_TTL_MS = 120 * 1000;
+
+function getConfigCacheTtlMs() {
+    const fromEnv = Number(process.env.CONFIG_CACHE_TTL_MS || ENV.get('config_cache_ttl_ms', String(DEFAULT_CONFIG_CACHE_TTL_MS)));
+    if (!Number.isFinite(fromEnv) || fromEnv < 0) return DEFAULT_CONFIG_CACHE_TTL_MS;
+    return fromEnv;
+}
+
+function buildConfigCacheKey({requestHost, cfgPath, subCode, healthy, pwd}) {
+    // pwd 只参与是否存在/哈希，避免明文进入 key 日志
+    const pwdFlag = pwd ? md5(String(pwd)).slice(0, 8) : '0';
+    return `${requestHost}|${cfgPath}|sub=${subCode || ''}|h=${healthy}|p=${pwdFlag}`;
+}
+
+function getCachedConfig(cacheKey) {
+    const hit = configResponseCache.get(cacheKey);
+    if (!hit) return null;
+    if (Date.now() > hit.expireAt) {
+        configResponseCache.delete(cacheKey);
+        return null;
+    }
+    return hit.payload;
+}
+
+function setCachedConfig(cacheKey, payload, ttlMs) {
+    if (!ttlMs || ttlMs <= 0) return;
+    // 简单上限，防止异常膨胀
+    if (configResponseCache.size > 100) {
+        const firstKey = configResponseCache.keys().next().value;
+        if (firstKey) configResponseCache.delete(firstKey);
+    }
+    configResponseCache.set(cacheKey, {
+        expireAt: Date.now() + ttlMs,
+        payload,
+    });
+}
+
 /**
  * 解析扩展参数字符串
  * 尝试将字符串解析为JSON对象或数组，如果解析失败则返回原字符串
@@ -1138,15 +1177,31 @@ export default (fastify, options, done) => {
                 return reply.status(500).send({error: `缺少订阅码参数`});
             }
 
-            // 生成站点配置数据
-            let siteJSON = await generateSiteJSON(options, requestHost, sub, pwd);
-
             // 处理healthy参数，过滤失效源（默认1；2=严格模式）
-            // 稳定订阅在未显式关闭 healthy 时，自动升到严格模式
+            // 稳定/极速订阅在未显式关闭 healthy 时，自动升到严格模式
             let healthyMode = healthy;
-            if ((sub_code === 'stable' || sub_code === 'stablex') && healthy !== '0') {
+            if ((sub_code === 'stable' || sub_code === 'stablex' || sub_code === 'fast') && healthy !== '0') {
                 healthyMode = (healthy === '1' || !healthy) ? '2' : healthy;
             }
+
+            const cacheTtlMs = getConfigCacheTtlMs();
+            const cacheKey = buildConfigCacheKey({
+                requestHost,
+                cfgPath: cfg_path,
+                subCode: sub_code,
+                healthy: healthyMode,
+                pwd,
+            });
+            const cached = getCachedConfig(cacheKey);
+            if (cached) {
+                const cost = (new Date()).getTime() - t1;
+                reply.header('x-config-cache', 'HIT');
+                reply.header('Cache-Control', `public, max-age=${Math.max(30, Math.floor(cacheTtlMs / 1000))}`);
+                return reply.send(Object.assign({}, cached, {cost, cache: 'HIT'}));
+            }
+
+            // 生成站点配置数据
+            let siteJSON = await generateSiteJSON(options, requestHost, sub, pwd);
             siteJSON.sites = applyHealthyFilter(
                 siteJSON.sites,
                 healthyMode,
@@ -1176,9 +1231,10 @@ export default (fastify, options, done) => {
             // 计算处理耗时并返回结果
             let t2 = (new Date()).getTime();
             let cost = t2 - t1;
-            // configObj.cost = cost;
-            // reply.send(configObj);
-            reply.send(Object.assign({cost}, configObj));
+            setCachedConfig(cacheKey, configObj, cacheTtlMs);
+            reply.header('x-config-cache', 'MISS');
+            reply.header('Cache-Control', `public, max-age=${Math.max(30, Math.floor(cacheTtlMs / 1000))}`);
+            reply.send(Object.assign({cost, cache: 'MISS'}, configObj));
         } catch (error) {
             reply.status(500).send({error: 'Failed to generate site JSON', details: error.message});
         }

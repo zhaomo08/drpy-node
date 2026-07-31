@@ -58,8 +58,10 @@ function withTimeout(promise, timeoutMs = null, operation = 'API操作', invokeM
         // action接口使用专用超时时间，默认60秒
         defaultTimeout = parseInt(process.env.API_ACTION_TIMEOUT || '60') * 1000;
     } else {
-        // 其他接口使用默认超时时间，默认20秒
-        defaultTimeout = parseInt(process.env.API_TIMEOUT || '20') * 1000;
+        // 其他接口默认超时：Vercel/Serverless 用更短超时，加快失败回退，体感更快
+        const isServerless = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+        const fallbackSec = isServerless ? '12' : '20';
+        defaultTimeout = parseInt(process.env.API_TIMEOUT || fallbackSec) * 1000;
     }
 
     const actualTimeout = timeoutMs || defaultTimeout;
